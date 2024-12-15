@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Websockets Using JavaScript MQTT Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="mqttws31.js" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" type="text/javascript"></script>
+    <script type="text/javascript">
+
+        var connected_flag = 0;
+        var mqtt;
+        var reconnectTimeout = 2000;
+        var host = "broker.hivemq.com";
+        var port = 8884;
+
+        // Chart.js variables
+        var chart;
+        var chartData = {
+            labels: [],
+            datasets: [{
+                label: 'Distance',
+                data: [],
+                borderColor: 'blue',
+                backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                borderWidth: 1,
+            }]
+        };
+
+        function onConnectionLost() {
+            console.log("Connection lost");
+            document.getElementById("status").innerHTML = "Connection Lost";
+            document.getElementById("messages").innerHTML = "Connection Lost";
+            connected_flag = 0;
+        }
+
+        function onFailure(message) {
+            console.log("Failed");
+            document.getElementById("messages").innerHTML = "Connection Failed - Retrying";
+            setTimeout(MQTTconnect, reconnectTimeout);
+        }
+
+        function onMessageArrived(r_message) {
+            let payload = JSON.parse(r_message.payloadString);
+            if (r_message.destinationName === "sensormobilapi/distance") {
+                document.getElementById("distance").innerHTML = "Distance: " + payload.distance;
+                
+                // Update chart
+                let now = new Date().toLocaleTimeString();
+                chartData.labels.push(now);
+                chartData.datasets[0].data.push(payload.distance);
+
+                // Limit the number of data points
+                if (chartData.labels.length > 20) {
+                    chartData.labels.shift();
+                    chartData.datasets[0].data.shift();
+                }
+
+                chart.update();
+            } else if (r_message.destinationName === "sensormobilapi/steer") {
+                document.getElementById("steer").innerHTML = "Steer: " + payload.steer.charAt(0).toUpperCase() + payload.steer.slice(1);
+            } else if (r_message.destinationName === "sensormobilapi/direction") {
+                document.getElementById("direction").innerHTML = "Direction: " + payload.direction.charAt(0).toUpperCase() + payload.direction.slice(1);
+            }
+
+            // Debugging message for confirmation
+            document.getElementById("messages").innerHTML = "Message received on topic: " + r_message.destinationName;
+        }
+
+        function onConnect() {
+            document.getElementById("messages").innerHTML = "Connected to " + host + " on port " + port;
+            connected_flag = 1;
+            document.getElementById("status").innerHTML = "Connected";
+            console.log("Connected");
+
+            // Subscribe to topics
+            mqtt.subscribe("sensormobilapi/distance");
+            mqtt.subscribe("sensormobilapi/steer");
+            mqtt.subscribe("sensormobilapi/direction");
+        }
+
+        function MQTTconnect() {
+            document.getElementById("messages").innerHTML = "";
+            console.log("Connecting to " + host + ":" + port);
+
+            let clientId = "clientId-" + Math.floor(Math.random() * 10000);
+            mqtt = new Paho.MQTT.Client(host, port, clientId);
+
+            let options = {
+                timeout: 3,
+                onSuccess: onConnect,
+                onFailure: onFailure,
+            };
+
+            mqtt.onConnectionLost = onConnectionLost;
+            mqtt.onMessageArrived = onMessageArrived;
+
+            mqtt.connect(options);
+        }
+
+        window.onload = function () {
+            MQTTconnect();
+
+            // Initialize Chart.js
+            var ctx = document.getElementById('distanceChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Distance (units)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+    </script>
+</head>
+<body>
+    <h1>Websockets Using JavaScript MQTT Client</h1>
+    <div id="status">Connection Status: Not Connected</div>
+    <hr>
+    <div id="distance">Distance: -</div>
+    <div id="steer">Steer: -</div>
+    <div id="direction">Direction: -</div>
+    <hr>
+    <canvas id="distanceChart" width="400" height="200"></canvas>
+    <hr>
+    <div id="messages">Messages will appear here...</div>
+</body>
+</html>
